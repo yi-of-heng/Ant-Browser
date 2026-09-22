@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button, Card, Input, Switch, Table } from '../../../../shared/components'
 import type { SortOrder, TableColumn } from '../../../../shared/components/Table'
-import type { ProxyIPHealthResult } from '../../types'
+import type { BrowserProfile, ProxyIPHealthResult } from '../../types'
+import { proxyUsageSummary } from '../../components/proxyUsage'
 
 import { BUILTIN_PROXY_IDS, sourceHostLabel, type ProxyDisplayInfo } from './helpers'
 
@@ -47,6 +48,7 @@ interface ProxyPoolTableCardProps {
   latencyMap: Record<string, number>
   latencyEngineMap: Record<string, string>
   latencyErrorMap: Record<string, string>
+  profileUsageByProxy: Record<string, BrowserProfile[]>
 }
 
 export function ProxyPoolTableCard({
@@ -90,6 +92,7 @@ export function ProxyPoolTableCard({
   latencyMap,
   latencyEngineMap,
   latencyErrorMap,
+  profileUsageByProxy,
 }: ProxyPoolTableCardProps) {
   const hasActiveFilters = filterProtocol !== 'all' || !!filterKeyword || filterGroup !== 'all' || filterAvailableOnly
   const [openMoreProxyId, setOpenMoreProxyId] = useState<string | null>(null)
@@ -246,6 +249,24 @@ export function ProxyPoolTableCard({
       render: (_, record) => renderIPHealth(record),
     },
     {
+      key: 'profiles',
+      title: '关联实例',
+      width: '220px',
+      render: (_, record) => {
+        const profiles = profileUsageByProxy[record.proxyId] || []
+        if (profiles.length === 0) {
+          return <span className="text-xs text-[var(--color-text-muted)]">未绑定</span>
+        }
+        const summary = proxyUsageSummary(profiles)
+        return (
+          <div className="min-w-0" title={profiles.map(profile => profile.profileName || profile.profileId).join('、')}>
+            <div className="text-xs font-medium text-[var(--color-text-primary)] truncate">{summary}</div>
+            <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">已绑定 {profiles.length} 个实例</div>
+          </div>
+        )
+      },
+    },
+    {
       key: 'actions',
       title: '操作',
       width: '190px',
@@ -347,6 +368,7 @@ export function ProxyPoolTableCard({
     ipHealthMap,
     latencyMap,
     latencyEngineMap,
+    profileUsageByProxy,
     onCheckOneIPHealth,
     onDelete,
     onEdit,

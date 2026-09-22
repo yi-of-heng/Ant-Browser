@@ -1,5 +1,6 @@
 ﻿import { Check, Loader2, Pencil, Trash2, Wifi } from 'lucide-react'
-import type { BrowserProxy } from '../types'
+import type { BrowserProfile, BrowserProxy } from '../types'
+import { proxyUsageSummary } from './proxyUsage'
 import { DIRECT_PROXY_ID, type SpeedResult } from './ProxyPickerModal.helpers'
 
 export function GroupItem({ label, active, count, onClick }: { label: string; active: boolean; count: number; onClick: () => void }) {
@@ -24,6 +25,7 @@ interface ProxyRowProps {
   testing: boolean
   speedResult?: SpeedResult
   displayConfig: string
+  profiles: BrowserProfile[]
   onSelect: () => void
   onTest: (e: React.MouseEvent) => void
   onEdit: (e: React.MouseEvent) => void
@@ -39,7 +41,7 @@ function SpeedBadge({ testing, result }: { testing: boolean; result?: SpeedResul
   return <span className={`text-xs font-medium shrink-0 whitespace-nowrap ${color}`}>{result.latencyMs}ms{suffix}</span>
 }
 
-export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
+export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig, profiles, onSelect, onTest, onEdit, onDelete }: ProxyRowProps) {
   const isDirect = proxy.proxyId === DIRECT_PROXY_ID
   const disableDelete = isDirect
 
@@ -57,6 +59,12 @@ export function ProxyRow({ proxy, selected, testing, speedResult, displayConfig,
         </div>
         <div className="text-xs text-[var(--color-text-muted)] truncate mt-0.5 w-0 min-w-full">
           {displayConfig}
+        </div>
+        <div
+          className={`text-xs truncate mt-1 w-0 min-w-full ${profiles.length > 0 ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'}`}
+          title={profiles.length > 0 ? profiles.map(profile => profile.profileName || profile.profileId).join('、') : undefined}
+        >
+          {profiles.length > 0 ? `关联实例（${profiles.length}）：${proxyUsageSummary(profiles)}` : '关联实例：未绑定'}
         </div>
       </div>
       <SpeedBadge testing={testing} result={speedResult} />

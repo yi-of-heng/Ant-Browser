@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, Search, Wifi, X } from 'lucide-react'
 import { ConfirmModal, toast } from '../../../shared/components'
-import type { BrowserProxy } from '../types'
-import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import type { BrowserProfile, BrowserProxy } from '../types'
+import { browserProxyBatchTestSpeed, browserProxyTestSpeed, fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { ProxyImportModal } from './ProxyImportModal'
 import { ProxyEditModal } from './ProxyPickerModal.edit'
 import { GroupItem, ProxyRow } from './ProxyPickerModal.rows'
+import { buildProxyUsageByID } from './proxyUsage'
 import { ALL_GROUP, BATCH_TEST_CONCURRENCY, DIRECT_PROXY_ID, INITIAL_CHAIN_EDIT_FORM, SPEED_RESULT_EVENT, buildChainProxyConfig, formatProxyConfigForDisplay, parseChainSocks5Config, toChainEditForm, type ChainEditForm, type ChainHopForm, type SpeedResult } from './ProxyPickerModal.helpers'
 
 const DIRECT_GROUP = '__direct_proxy__'
@@ -38,6 +39,7 @@ interface ProxyPickerModalProps {
 export function ProxyPickerModal({ open, currentProxyId, title = '从代理池选择', onSelect, onClose, onProxyListUpdated, onProxyDeleted, onProxyTested }: ProxyPickerModalProps) {
   const [groups, setGroups] = useState<string[]>([])
   const [allProxies, setAllProxies] = useState<BrowserProxy[]>([])
+  const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUP)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -58,13 +60,15 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
   const loadData = async () => {
     setLoading(true)
     try {
-      const [groupList, proxyList] = await Promise.all([
+      const [groupList, proxyList, profileList] = await Promise.all([
         fetchBrowserProxyGroups(),
         fetchBrowserProxies(),
+        fetchBrowserProfiles(),
       ])
       const nextProxies = ensureBuiltinDirectProxy(proxyList)
       setGroups(groupList)
       setAllProxies(nextProxies)
+      setProfiles(profileList)
       onProxyListUpdated?.(nextProxies)
       const initMap: Record<string, SpeedResult> = {}
       nextProxies.forEach(proxy => {
@@ -152,6 +156,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
     })
     return counts
   }, [allProxies])
+  const profileUsageByProxy = useMemo(() => buildProxyUsageByID(profiles), [profiles])
 
   const testOne = async (proxyId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -429,6 +434,7 @@ export function ProxyPickerModal({ open, currentProxyId, title = '从代理池�
                     testing={testingIds.has(item.proxy.proxyId)}
                     speedResult={speedMap[item.proxy.proxyId]}
                     displayConfig={item.displayConfig}
+                    profiles={profileUsageByProxy[item.proxy.proxyId] || []}
                     onSelect={() => { onSelect(item.proxy); onClose() }}
                     onTest={e => testOne(item.proxy.proxyId, e)}
                     onEdit={e => handleEditClick(item.proxy, e)}

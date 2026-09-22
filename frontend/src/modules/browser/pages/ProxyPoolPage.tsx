@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfirmModal, toast } from '../../../shared/components'
 import type { SortOrder } from '../../../shared/components/Table'
-import type { BrowserProxy, ProxyIPHealthResult } from '../types'
-import { fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import type { BrowserProfile, BrowserProxy, ProxyIPHealthResult } from '../types'
+import { fetchBrowserProfiles, fetchBrowserProxies, fetchBrowserProxyGroups, saveBrowserProxies } from '../api'
+import { buildProxyUsageByID } from '../components/proxyUsage'
 import {
   buildChainImportCandidate,
   buildDirectImportCandidate,
@@ -40,6 +41,7 @@ import { useProxyPoolFilter } from './proxyPool/useProxyPoolFilter'
 
 export function ProxyPoolPage() {
   const [proxies, setProxies] = useState<BrowserProxy[]>([])
+  const [profiles, setProfiles] = useState<BrowserProfile[]>([])
   const [displayList, setDisplayList] = useState<ProxyDisplayInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [usageGuideOpen, setUsageGuideOpen] = useState(false)
@@ -167,14 +169,16 @@ export function ProxyPoolPage() {
   const loadProxies = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, groupList] = await Promise.all([
+      const [list, groupList, profileList] = await Promise.all([
         fetchBrowserProxies(),
         fetchBrowserProxyGroups(),
+        fetchBrowserProfiles(),
       ])
       const finalList = await ensureBuiltinProxies(list)
       setProxies(finalList)
       setDisplayList(toDisplayList(finalList))
       setGroups(groupList)
+      setProfiles(profileList)
 
       setLatencyMap(prev => {
         const validIds = new Set(finalList.map(p => p.proxyId))
@@ -225,6 +229,7 @@ export function ProxyPoolPage() {
     latencyMap,
     ipHealthMap,
   })
+  const profileUsageByProxy = buildProxyUsageByID(profiles)
 
   const {
     selectedIds,
@@ -373,6 +378,7 @@ export function ProxyPoolPage() {
         latencyMap={latencyMap}
         latencyEngineMap={latencyEngineMap}
         latencyErrorMap={latencyErrorMap}
+        profileUsageByProxy={profileUsageByProxy}
         loading={loading}
         onCheckOneIPHealth={(record) => void handleCheckOneIPHealth(record)}
         onClearFilters={() => {
