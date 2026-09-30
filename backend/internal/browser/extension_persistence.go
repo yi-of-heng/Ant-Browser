@@ -33,6 +33,7 @@ type extensionLegacyPreferences struct {
 
 func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath string, userDataDir string, installArgs []string) ([]string, []error) {
 	warnings := make([]error, 0, 1)
+	launchDirs := make([]string, 0)
 	if m == nil || m.ExtensionDAO == nil || profile == nil {
 		return nil, warnings
 	}
@@ -67,16 +68,20 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 	desired := make(map[string]Extension, len(extensions))
 	for _, extension := range extensions {
 		desired[extension.ExtensionID] = extension
-		if _, installErr := m.ensurePersistentExtensionInstalled(profile, userDataDir, chromeBinaryPath, extension, installArgs); installErr != nil {
+		codePath, installErr := m.ensurePersistentExtensionInstalled(profile, userDataDir, chromeBinaryPath, extension, installArgs)
+		if installErr != nil {
 			warnings = append(warnings, installErr)
 			continue
+		}
+		if runtime.GOOS != "windows" {
+			launchDirs = append(launchDirs, codePath)
 		}
 	}
 
 	runtimeStates, err := m.ExtensionDAO.ListProfileExtensionRuntime(profile.ProfileId)
 	if err != nil {
 		warnings = append(warnings, fmt.Errorf("读取实例插件运行态失败：%w", err))
-		return nil, warnings
+		return launchDirs, warnings
 	}
 	for _, runtimeState := range runtimeStates {
 		if _, ok := desired[runtimeState.ExtensionID]; ok {
@@ -97,7 +102,7 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 	allExtensions, err := m.ExtensionDAO.List()
 	if err != nil {
 		warnings = append(warnings, fmt.Errorf("读取插件列表失败：%w", err))
-		return nil, warnings
+		return launchDirs, warnings
 	}
 	for _, extension := range allExtensions {
 		if _, ok := desired[extension.ExtensionID]; ok {
@@ -115,7 +120,7 @@ func (m *Manager) PrepareProfileExtensions(profile *Profile, chromeBinaryPath st
 		}
 	}
 
-	return nil, warnings
+	return launchDirs, warnings
 }
 func (m *Manager) RemoveExtensionFromStoppedProfiles(extensionID string) error {
 	if m == nil || m.ExtensionDAO == nil {
@@ -291,7 +296,7 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 		runtimeState.InstalledVersion == extension.Version && runtimeState.PackageHash == packageHash {
 		expectedArtifactPath := persistentExtensionCodePath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version)
 		if artifactPath := persistentExtensionArtifactPath(userDataDir, runtimeState.RuntimeExtensionID, extension.Version); artifactPath != "" && sameProfileExtensionPath(artifactPath, expectedArtifactPath) {
-			if err := ensureProfileExtensionRegistration(userDataDir, artifactPath, runtimeState.RuntimeExtensionID, packagePath); err == nil {
+			if err := ensureManagedProfileExtensionReady(userDataDir, artifactPath, runtimeState.RuntimeExtensionID, packagePath); err == nil {
 				if err := ensurePersistentExternalExtensionRegistry(runtimeState.RuntimeExtensionID, packagePath, extension.Version); err != nil {
 					return "", err
 				}
@@ -311,6 +316,11 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 	}
 	if runtimeErr == nil && strings.TrimSpace(runtimeState.RuntimeExtensionID) != "" {
 		legacyRuntimeIDs = append(legacyRuntimeIDs, runtimeState.RuntimeExtensionID)
+	}
+	// A prior install can exist without a runtime row (e.g. after an import
+	// or interrupted start). Include it in the rollback before replacing code.
+	if packageRuntimeID, idErr := runtimeExtensionIDFromPackage(packagePath, extension); idErr == nil && persistentExtensionCodeID(userDataDir, packageRuntimeID) != "" {
+		legacyRuntimeIDs = append(legacyRuntimeIDs, packageRuntimeID)
 	}
 	legacyRuntimeIDs = uniqueExtensionIDs(legacyRuntimeIDs)
 
@@ -358,13 +368,13 @@ func (m *Manager) ensurePersistentExtensionInstalled(profile *Profile, userDataD
 		m.recordProfileExtensionRuntimeError(profile.ProfileId, extension, runtimeState, packageHash, backupPath, installErr)
 		return "", fmt.Errorf("插件持久安装失败（%s）：%w；安装前备份已保留在 %s", extension.Name, installErr, backupPath)
 	}
-	if err := ensureProfileExtensionRegistration(userDataDir, artifactPath, runtimeExtensionID, packagePath); err != nil {
+	if err := ensureManagedProfileExtensionReady(userDataDir, artifactPath, runtimeExtensionID, packagePath); err != nil {
 		installErr := fmt.Errorf("实例插件注册失败：%w", err)
 		_ = restoreProfileExtensionState(userDataDir, backupPath, legacyRuntimeIDs, runtimeExtensionID)
 		m.recordProfileExtensionRuntimeError(profile.ProfileId, extension, runtimeState, packageHash, backupPath, installErr)
 		return "", fmt.Errorf("插件持久安装失败（%s）：%w；安装前备份已保留在 %s", extension.Name, installErr, backupPath)
 	}
-	if !persistentExtensionArtifactMatches(userDataDir, runtimeExtensionID, extension.Version) || !profileExtensionSettingMatches(userDataDir, runtimeExtensionID, extension.Version) {
+	if !persistentExtensionArtifactMatches(userDataDir, runtimeExtensionID, extension.Version) || (runtime.GOOS == "windows" && !profileExtensionSettingMatches(userDataDir, runtimeExtensionID, extension.Version)) {
 		installErr := fmt.Errorf("实例插件未通过最终校验：代码或 Secure Preferences 注册缺失（%s）", persistentExtensionCodePath(userDataDir, runtimeExtensionID, extension.Version))
 		_ = restoreProfileExtensionState(userDataDir, backupPath, legacyRuntimeIDs, runtimeExtensionID)
 		m.recordProfileExtensionRuntimeError(profile.ProfileId, extension, runtimeState, packageHash, backupPath, installErr)
@@ -516,6 +526,10 @@ func terminateExtensionInstallerProcess(command *exec.Cmd) {
 }
 
 func installExtensionPackageIntoProfile(userDataDir string, packagePath string, extension Extension) (runtimeID string, err error) {
+	return installExtensionPackageIntoProfileWithRegistration(userDataDir, packagePath, extension, true)
+}
+
+func installExtensionPackageIntoProfileWithRegistration(userDataDir string, packagePath string, extension Extension, register bool) (runtimeID string, err error) {
 	packageData, err := os.ReadFile(packagePath)
 	if err != nil {
 		return "", fmt.Errorf("读取插件包失败: %w", err)
@@ -555,17 +569,34 @@ func installExtensionPackageIntoProfile(userDataDir string, packagePath string, 
 	if err := writeProfileScopedExtensionManifest(filepath.Join(targetPath, "manifest.json"), packageData, runtimeID); err != nil {
 		return "", err
 	}
-	if err := ensureProfileScopedExtensionRegistration(userDataDir, targetPath, runtimeID, packagePath); err != nil {
-		return "", err
+	if register {
+		if err := ensureProfileScopedExtensionRegistration(userDataDir, targetPath, runtimeID, packagePath); err != nil {
+			return "", err
+		}
+	} else if err := os.RemoveAll(filepath.Join(targetPath, "_metadata")); err != nil {
+		// CRX verification metadata is not part of an unpacked extension.
+		return "", fmt.Errorf("清理插件包元数据失败: %w", err)
 	}
 	if err := removeStalePersistentExtensionVersions(userDataDir, runtimeID, targetPath); err != nil {
 		return "", err
 	}
-	if !persistentExtensionArtifactMatches(userDataDir, runtimeID, manifest.Version) || !profileExtensionSettingMatches(userDataDir, runtimeID, manifest.Version) {
+	if !persistentExtensionArtifactMatches(userDataDir, runtimeID, manifest.Version) || (register && !profileExtensionSettingMatches(userDataDir, runtimeID, manifest.Version)) {
 		return "", fmt.Errorf("实例插件目录或 Secure Preferences 校验失败：%s", targetPath)
 	}
 	rollback = false
 	return runtimeID, nil
+}
+
+func ensureManagedProfileExtensionReady(userDataDir, codePath, runtimeID, packagePath string) error {
+	if runtime.GOOS == "windows" {
+		return ensureProfileExtensionRegistration(userDataDir, codePath, runtimeID, packagePath)
+	}
+	// Let Chromium register/grant the unpacked extension through its supported
+	// loader. Editing protected preferences alone is rejected by modern cores.
+	if err := ensureProfileScopedExtensionManifest(codePath, packagePath, runtimeID); err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(codePath, "_metadata"))
 }
 
 func ensureProfileScopedExtensionManifest(codePath string, packagePath string, runtimeID string) error {
@@ -703,7 +734,9 @@ func ensureProfileJSONValue(values profileExtensionJSON, key string, fallback an
 func extensionPermissionSnapshot(manifest profileExtensionJSON) profileExtensionJSON {
 	api := make([]any, 0)
 	explicitHost := make([]any, 0)
-	for _, key := range []string{"permissions", "optional_permissions", "host_permissions"} {
+	// Optional permissions are requested by the extension later, not granted
+	// implicitly just because the package declares them.
+	for _, key := range []string{"permissions", "host_permissions"} {
 		items, ok := manifest[key].([]any)
 		if !ok {
 			continue
@@ -1094,7 +1127,6 @@ func findInstalledRuntimeExtensionID(userDataDir string, extension Extension) (s
 	}
 
 	expectedName := strings.TrimSpace(extension.Name)
-	fallbackRuntimeID := ""
 	for _, entry := range entries {
 		if !entry.IsDir() || !extensionIDPattern.MatchString(entry.Name()) {
 			continue
@@ -1115,16 +1147,13 @@ func findInstalledRuntimeExtensionID(userDataDir string, extension Extension) (s
 			if json.Unmarshal(manifestData, &manifest) != nil || strings.TrimSpace(manifest.Version) != strings.TrimSpace(extension.Version) {
 				continue
 			}
-			if fallbackRuntimeID == "" {
-				fallbackRuntimeID = entry.Name()
-			}
-			if expectedName != "" && !strings.EqualFold(expectedName, strings.TrimSpace(manifest.Name)) {
+			if expectedName == "" || !strings.EqualFold(expectedName, strings.TrimSpace(manifest.Name)) {
 				continue
 			}
 			return entry.Name(), nil
 		}
 	}
-	return fallbackRuntimeID, nil
+	return "", nil
 }
 
 func persistentExtensionArtifactMatches(userDataDir string, runtimeExtensionID string, version string) bool {

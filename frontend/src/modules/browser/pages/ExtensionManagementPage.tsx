@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { toast } from '../../../shared/components'
+import { ConfirmModal, toast } from '../../../shared/components'
 import type { BrowserExtension, BrowserExtensionLookupResult, BrowserProxy } from '../types'
 import {
   deleteBrowserExtension,
@@ -49,6 +49,7 @@ export function ExtensionManagementPage() {
   const [downloadDirOpen, setDownloadDirOpen] = useState(false)
   const [lastLookupProxyLabel, setLastLookupProxyLabel] = useState('')
   const [limitExtension, setLimitExtension] = useState<BrowserExtension | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BrowserExtension | null>(null)
 
   const installedIds = useMemo(() => new Set(items.map((item) => item.extensionId)), [items])
   const selectedProxy = useMemo(
@@ -377,7 +378,6 @@ export function ExtensionManagementPage() {
   }
 
   const handleDelete = async (item: BrowserExtension) => {
-    if (!window.confirm(`删除插件「${item.name || item.extensionId}」？`)) return
     setBusyId(item.extensionId)
     setBusyAction('delete')
     try {
@@ -484,6 +484,16 @@ export function ExtensionManagementPage() {
         onClear={handleClearHistory}
       />
 
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget) }}
+        title="删除插件"
+        content={`删除插件「${deleteTarget?.name || deleteTarget?.extensionId || ''}」？请先停止使用此插件的实例。插件包及实例安装记录会移除，插件本地数据会保留，重新导入后可继续使用。`}
+        confirmText="删除"
+        danger
+      />
+
       <ExtensionProfileLimitModal
         open={!!limitExtension}
         extension={limitExtension}
@@ -545,7 +555,7 @@ export function ExtensionManagementPage() {
         onDefaultInstallToggle={(target) => void handleDefaultInstallToggle(target)}
         onUpdate={(target) => void handleUpdateExtension(target)}
         onToggle={(target) => void handleToggle(target)}
-        onDelete={(target) => void handleDelete(target)}
+        onDelete={setDeleteTarget}
       />
     </div>
 

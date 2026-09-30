@@ -206,3 +206,12 @@ func (a *App) openBrowserTabForRunningProfile(profile *BrowserProfile, extraLaun
 	}
 	return err
 }
+
+// User supplied extension switches are stripped by the normal argument builder.
+// Only successfully staged, profile-local extension directories reach here.
+func appendManagedExtensionLaunchArgs(args []string, extensionDirs []string) []string {
+	if len(extensionDirs) == 0 {
+		return args
+	}
+	return append([]string{"--load-extension=" + strings.Join(extensionDirs, ",")}, args...)
+}

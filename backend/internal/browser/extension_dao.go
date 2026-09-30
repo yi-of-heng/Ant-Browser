@@ -141,12 +141,31 @@ func (d *SQLiteExtensionDAO) SetDefaultInstall(extensionID string, enabled bool)
 }
 
 func (d *SQLiteExtensionDAO) Delete(extensionID string) error {
-	_, err := d.db.Exec(`DELETE FROM browser_extensions WHERE extension_id = ?`, strings.TrimSpace(extensionID))
+	extensionID = strings.TrimSpace(extensionID)
+	if extensionID == "" {
+		return fmt.Errorf("插件 ID 不能为空")
+	}
+	tx, err := d.db.Begin()
 	if err != nil {
 		return fmt.Errorf("删除插件失败: %w", err)
 	}
-	_, _ = d.db.Exec(`DELETE FROM browser_profile_extensions WHERE extension_id = ?`, strings.TrimSpace(extensionID))
-	_, _ = d.db.Exec(`DELETE FROM browser_profile_extension_runtime WHERE extension_id = ?`, strings.TrimSpace(extensionID))
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM browser_profile_extensions WHERE extension_id = ?`, extensionID); err != nil {
+		return fmt.Errorf("删除插件实例配置失败: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM browser_profile_extension_runtime WHERE extension_id = ?`, extensionID); err != nil {
+		return fmt.Errorf("删除插件运行态失败: %w", err)
+	}
+	result, err := tx.Exec(`DELETE FROM browser_extensions WHERE extension_id = ?`, extensionID)
+	if err != nil {
+		return fmt.Errorf("删除插件失败: %w", err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return sql.ErrNoRows
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("删除插件失败: %w", err)
+	}
 	return nil
 }
 

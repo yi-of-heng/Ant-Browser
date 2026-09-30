@@ -163,7 +163,14 @@ export function ExtensionProfileLimitModal({ open, extension, allExtensions, onC
       ) : (
         <div className="space-y-3">
           <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-            勾选的实例会写入此插件；未勾选的实例会按默认安装状态或本实例的其他设置处理。
+            勾选的实例下次启动会安装此插件；未勾选的实例下次启动会移除此插件，其他插件设置不变。
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-[var(--color-text-muted)]">已选 {selectedIds.length} / {profiles.length}</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setSelectedIds(profiles.map((profile) => profile.profileId))}>选择全部实例</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>取消全选</Button>
+            </div>
           </div>
           <div className="max-h-[420px] space-y-3 overflow-auto pr-1">
             {profileGroups.map((group) => {

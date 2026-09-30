@@ -192,6 +192,9 @@ func (m *Manager) InstallExtensionPackageBytes(extensionID string, sourceURL str
 		PackagePath:  packagePath,
 		PackageHash:  packageHash,
 		Enabled:      true,
+		// A newly imported package is intended to be available to every
+		// instance unless the user explicitly limits it later in the UI.
+		DefaultInstall: true,
 	}
 	if m.ExtensionDAO != nil {
 		if err := m.ExtensionDAO.Upsert(extension); err != nil {
@@ -238,16 +241,17 @@ func (m *Manager) InstallExtensionDirectory(sourceDir string) (Extension, error)
 	}
 	localeMessages := readExtensionLocaleMessagesFromDir(normalizedDir, manifest)
 	extension := Extension{
-		ExtensionID:  extensionID,
-		Name:         resolveExtensionMessage(resolveExtensionName(manifest, extensionID), localeMessages),
-		Version:      strings.TrimSpace(manifest.Version),
-		Description:  resolveExtensionDescription(manifest, localeMessages),
-		IconDataURL:  readExtensionIconDataURLFromDir(normalizedDir, manifest),
-		ManifestJSON: string(manifestData),
-		SourceURL:    normalizedDir,
-		InstallDir:   installDir,
-		InstallMode:  ExtensionInstallModePersistent,
-		Enabled:      true,
+		ExtensionID:    extensionID,
+		Name:           resolveExtensionMessage(resolveExtensionName(manifest, extensionID), localeMessages),
+		Version:        strings.TrimSpace(manifest.Version),
+		Description:    resolveExtensionDescription(manifest, localeMessages),
+		IconDataURL:    readExtensionIconDataURLFromDir(normalizedDir, manifest),
+		ManifestJSON:   string(manifestData),
+		SourceURL:      normalizedDir,
+		InstallDir:     installDir,
+		InstallMode:    ExtensionInstallModePersistent,
+		Enabled:        true,
+		DefaultInstall: true,
 	}
 	if m.ExtensionDAO != nil {
 		if err := m.ExtensionDAO.Upsert(extension); err != nil {

@@ -171,7 +171,8 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	// 若此时实例浏览器尚未运行，安装助手进程就是实例浏览器本身，
 	// 缺少调试端口会导致后续正式启动被 Chrome 单实例交接、误报“就绪前退出”。
 	extensionInstallArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, nil, restoreLastSession)
-	_, extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir, extensionInstallArgs)
+	extensionDirs, extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir, extensionInstallArgs)
+	instanceArgs = appendManagedExtensionLaunchArgs(instanceArgs, extensionDirs)
 	extensionWarning := joinBrowserStartExtensionWarnings(extensionWarnings)
 
 	return &browserStartPlan{

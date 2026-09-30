@@ -198,3 +198,47 @@ func TestExtensionDirectoryLoadingIsDisabled(t *testing.T) {
 		t.Fatalf("EnabledExtensionDirsForProfile = %#v, extension directories must never be returned", dirs)
 	}
 }
+
+func TestSQLiteExtensionDeleteRollsBackAllRecordsOnFailure(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "delete.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = db.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	dao := NewSQLiteExtensionDAO(db.GetConn())
+	const id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err = dao.Upsert(Extension{ExtensionID: id, Name: "Fixture", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dao.SetProfileSettings("profile", []string{id}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err = dao.UpsertProfileExtensionRuntime(ProfileExtensionRuntime{ProfileID: "profile", ExtensionID: id, Status: ExtensionRuntimeStatusInstalled}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.GetConn().Exec(`CREATE TRIGGER prevent_runtime_delete BEFORE DELETE ON browser_profile_extension_runtime BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err = dao.Delete(id); err == nil {
+		t.Fatal("delete should fail")
+	}
+	if _, err = dao.Get(id); err != nil {
+		t.Fatalf("metadata lost after failure: %v", err)
+	}
+	settings, err := dao.GetProfileSettings("profile")
+	if err != nil || len(settings.ExtensionIDs) != 1 {
+		t.Fatalf("bindings lost: %v %v", settings, err)
+	}
+	if _, err = dao.GetProfileExtensionRuntime("profile", id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.GetConn().Exec(`DROP TRIGGER prevent_runtime_delete`); err != nil {
+		t.Fatal(err)
+	}
+	if err = dao.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+}

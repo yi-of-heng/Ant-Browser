@@ -282,12 +282,16 @@ func (a *App) BrowserExtensionSetEnabled(extensionID string, enabled bool) (Brow
 	if extensionID == "" {
 		return BrowserExtension{}, fmt.Errorf("插件 ID 不能为空")
 	}
+	previous, err := a.browserMgr.ExtensionDAO.Get(extensionID)
+	if err != nil {
+		return BrowserExtension{}, err
+	}
 	if err := a.browserMgr.ExtensionDAO.SetEnabled(extensionID, enabled); err != nil {
 		return BrowserExtension{}, err
 	}
 	if !enabled {
 		if err := a.browserMgr.RemoveExtensionFromStoppedProfiles(extensionID); err != nil {
-			_ = a.browserMgr.ExtensionDAO.SetEnabled(extensionID, true)
+			_ = a.browserMgr.ExtensionDAO.SetEnabled(extensionID, previous.Enabled)
 			return BrowserExtension{}, err
 		}
 	}
@@ -477,6 +481,9 @@ func (a *App) resolveBrowserExtensionInstallDir(installDir string) (string, erro
 	installDir = strings.TrimSpace(installDir)
 	if installDir == "" {
 		return "", nil
+	}
+	if !filepath.IsAbs(installDir) {
+		installDir = a.resolveAppPath(installDir)
 	}
 	target, err := filepath.Abs(installDir)
 	if err != nil {

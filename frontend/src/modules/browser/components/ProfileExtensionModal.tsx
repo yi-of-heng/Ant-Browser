@@ -20,7 +20,8 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const inheritedIds = useMemo(() => extensions.filter((extension) => extension.enabled && extension.defaultInstall).map((extension) => extension.extensionId), [extensions])
+  const selectedSet = useMemo(() => new Set(configured ? selectedIds : inheritedIds), [configured, selectedIds, inheritedIds])
 
   useEffect(() => {
     if (!open || !profile) return
@@ -77,14 +78,18 @@ export function ProfileExtensionModal({ open, profile, onClose }: ProfileExtensi
           <input
             type="checkbox"
             checked={configured}
-            onChange={(event) => setConfigured(event.target.checked)}
+            onChange={(event) => {
+              if (event.target.checked) setSelectedIds(inheritedIds)
+              setConfigured(event.target.checked)
+            }}
+            disabled={loading || saving}
             className="h-4 w-4 rounded accent-[var(--color-accent)]"
           />
         </label>
 
         {!configured ? (
           <div className="rounded-xl border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-muted)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
-            当前实例继承“默认安装”插件。打开手动设置后，只写入下方勾选的插件。
+            当前实例继承“默认安装”插件，下方勾选显示实际继承结果。打开手动设置后可调整本实例的插件。
           </div>
         ) : null}
 
