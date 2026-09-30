@@ -241,6 +241,11 @@ if [[ -f "$CHROME_README_SRC" ]]; then
   cp "$CHROME_README_SRC" "$APP_MACOS_DIR/chrome/README.md"
 fi
 
+# Runtime files are added after Wails packaging. Re-sign the final assembled
+# bundle, otherwise macOS reports a sealed-resource mismatch on launch.
+codesign --force --deep --sign - "$APP_STAGE"
+codesign --verify --deep --strict --verbose=2 "$APP_STAGE"
+
 ditto "$APP_STAGE" "$APP_EXPORT"
 rm -f "$OUTPUT_DIR/$ZIP_NAME"
 ditto -c -k --sequesterRsrc --keepParent "$APP_EXPORT" "$OUTPUT_DIR/$ZIP_NAME"
