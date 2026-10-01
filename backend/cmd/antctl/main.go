@@ -43,7 +43,7 @@ func run(ctx context.Context, c *controlclient.Client, args []string) error {
 	}
 	if args[0] == "proxies" && len(args) == 2 && args[1] == "list" {
 		items, err := c.ListProxies(ctx)
-		return printResult(items, err)
+		return printResult(safeProxies(items), err)
 	}
 	if args[0] != "profiles" || len(args) < 2 {
 		usage()
@@ -52,19 +52,19 @@ func run(ctx context.Context, c *controlclient.Client, args []string) error {
 	switch args[1] {
 	case "list":
 		items, err := c.ListProfiles(ctx)
-		return printResult(items, err)
+		return printResult(safeProfiles(items), err)
 	case "get":
 		if len(args) != 3 {
 			return errors.New("用法: profiles get PROFILE_ID")
 		}
 		item, err := c.GetProfile(ctx, args[2])
-		return printResult(item, err)
+		return printResult(safeProfile(item), err)
 	case "start":
 		if len(args) != 3 {
 			return errors.New("用法: profiles start PROFILE_ID")
 		}
 		item, err := c.StartProfile(ctx, args[2])
-		return printResult(item, err)
+		return printResult(safeProfile(item), err)
 	case "stop":
 		if len(args) != 3 {
 			return errors.New("用法: profiles stop PROFILE_ID")
@@ -99,7 +99,7 @@ func create(ctx context.Context, c *controlclient.Client, args []string) error {
 		return errors.New("--name 不能为空")
 	}
 	item, err := c.CreateProfile(ctx, in.input(), *auto)
-	return printResult(item, err)
+	return printResult(safeProfile(item), err)
 }
 
 func update(ctx context.Context, c *controlclient.Client, args []string) error {
@@ -121,7 +121,7 @@ func update(ctx context.Context, c *controlclient.Client, args []string) error {
 	merged := inputFromProfile(current)
 	in.applyTo(&merged)
 	item, err := c.UpdateProfile(ctx, id, merged, *auto)
-	return printResult(item, err)
+	return printResult(safeProfile(item), err)
 }
 
 func createBatch(ctx context.Context, c *controlclient.Client, args []string) error {
@@ -136,13 +136,13 @@ func createBatch(ctx context.Context, c *controlclient.Client, args []string) er
 	if err = json.Unmarshal(data, &inputs); err != nil {
 		return fmt.Errorf("批量文件必须是 ProfileInput JSON 数组: %w", err)
 	}
-	results := make([]browser.Profile, 0, len(inputs))
+	results := make([]map[string]any, 0, len(inputs))
 	for _, in := range inputs {
 		item, e := c.CreateProfile(ctx, in, false)
 		if e != nil {
 			return e
 		}
-		results = append(results, item)
+		results = append(results, safeProfile(item))
 	}
 	return printResult(results, nil)
 }
@@ -203,6 +203,24 @@ func printResult(v any, err error) error {
 	data, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(string(data))
 	return nil
+}
+
+func safeProfile(p browser.Profile) map[string]any {
+	return map[string]any{"profileId": p.ProfileId, "profileName": p.ProfileName, "coreId": p.CoreId, "proxyId": p.ProxyId, "groupId": p.GroupId, "tags": p.Tags, "running": p.Running, "debugReady": p.DebugReady, "debugPort": p.DebugPort, "pid": p.Pid, "launchCode": p.LaunchCode, "lastError": p.LastError}
+}
+func safeProfiles(items []browser.Profile) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, safeProfile(item))
+	}
+	return out
+}
+func safeProxies(items []browser.Proxy) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{"proxyId": item.ProxyId, "proxyName": item.ProxyName, "groupName": item.GroupName, "preferredKernel": item.PreferredKernel, "lastTestOk": item.LastTestOk, "lastLatencyMs": item.LastLatencyMs, "lastTestedAt": item.LastTestedAt})
+	}
+	return out
 }
 func envOr(k, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(k)); v != "" {
