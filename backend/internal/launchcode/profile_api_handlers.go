@@ -1,11 +1,89 @@
 package launchcode
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"ant-chrome/backend/internal/logger"
 )
+
+type ProfileCopyRequest struct {
+	Name       string               `json:"name"`
+	Mode       string               `json:"mode"`
+	AutoLaunch bool                 `json:"autoLaunch"`
+	Start      *LaunchRequestParams `json:"start"`
+}
+
+// handleCopyProfile POST /api/profiles/{id}/copy creates a new persistent
+// profile from an existing one. The source profile is never modified or
+// deleted. Copying creates a fresh user-data directory and, by default, a new
+// fingerprint seed while retaining the source proxy binding.
+func (s *LaunchServer) handleCopyProfile(w http.ResponseWriter, r *http.Request, profileID string) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
+		return
+	}
+	var req ProfileCopyRequest
+	if r.Body != nil {
+		dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil && err != io.EOF {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
+			return
+		}
+	}
+	source, status, errMsg := s.profileSnapshotByID(profileID)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]any{"ok": false, "error": errMsg})
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "auto_fingerprint"
+	}
+	if mode != "auto_fingerprint" && mode != "regular" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "mode must be auto_fingerprint or regular"})
+		return
+	}
+	profile, err := s.copyProfileInternal(profileID, strings.TrimSpace(req.Name), mode)
+	if err != nil {
+		writeJSON(w, mapProfileWriteErrorStatus(err), map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if profile == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "profile copy returned nil profile"})
+		return
+	}
+	launchCode, status, errMsg := s.applyRequestedLaunchCode(profile.ProfileId, profile.LaunchCode, "")
+	if errMsg != "" {
+		writeJSON(w, status, map[string]any{"ok": false, "error": errMsg, "created": true, "profile": profile})
+		return
+	}
+	profile.LaunchCode = launchCode
+	launched := false
+	if req.AutoLaunch {
+		launchReq := ProfileWriteRequest{AutoLaunch: true, Start: req.Start}
+		launchedProfile, ok, launchErr := s.maybeAutoLaunchProfile(profile, launchReq)
+		if launchErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "created": true, "launched": false, "sourceProfileId": source.ProfileId, "profile": profile, "error": launchErr.Error()})
+			return
+		}
+		if ok {
+			mergeProfileRuntime(profile, launchedProfile)
+			s.SetActiveProfile(profile)
+			launched = true
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"ok": true, "created": true, "launched": launched,
+		"sourceProfileId": source.ProfileId, "sourceProfileName": source.ProfileName,
+		"profileId": profile.ProfileId, "profileName": profile.ProfileName,
+		"launchCode": profile.LaunchCode, "profile": profile,
+	})
+}
 
 // handleCreateProfile POST /api/profiles
 func (s *LaunchServer) handleCreateProfile(w http.ResponseWriter, r *http.Request) {

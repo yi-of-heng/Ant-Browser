@@ -36,26 +36,17 @@ func globalFlags(args []string) (string, string, []string) {
 }
 
 func run(ctx context.Context, c *controlclient.Client, args []string) error {
-	group, command := args[0], ""
-	rest := args[1:]
-	if group != "health" {
-		if len(rest) == 0 {
-			usage()
-			return errors.New("缺少命令")
-		}
-		command, rest = rest[0], rest[1:]
-	}
-	spec, ok := controlops.FindCLI(group, command)
+	spec, consumed, ok := controlops.FindCLIPath(args)
 	if !ok {
 		usage()
 		return errors.New("未知命令")
 	}
-	values, err := parseArgs(spec, rest)
+	values, err := parseArgs(spec, args[consumed:])
 	if err != nil {
 		return err
 	}
 	result, err := controlops.Execute(ctx, c, spec.Name, values)
-	if result != nil {
+	if result != nil && (err == nil || spec.Name == "create_instances_batch") {
 		data, marshalErr := json.MarshalIndent(result, "", "  ")
 		if marshalErr != nil {
 			return marshalErr
@@ -67,12 +58,16 @@ func run(ctx context.Context, c *controlclient.Client, args []string) error {
 
 func parseArgs(spec controlops.Spec, args []string) (map[string]any, error) {
 	values := map[string]any{}
-	if hasField(spec, "instance_id") {
-		if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-			return nil, fmt.Errorf("用法: antctl %s INSTANCE_ID [flags]", spec.CLI)
+	for _, positional := range []string{"instance_id", "script_id"} {
+		if !hasField(spec, positional) {
+			continue
 		}
-		values["instance_id"] = args[0]
+		if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+			return nil, fmt.Errorf("用法: antctl %s %s [flags]", spec.CLI, strings.ToUpper(strings.TrimSuffix(positional, "_id"))+"_ID")
+		}
+		values[positional] = args[0]
 		args = args[1:]
+		break
 	}
 	if spec.Name == "create_instances_batch" {
 		if len(args) != 1 {
@@ -93,14 +88,18 @@ func parseArgs(spec controlops.Spec, args []string) (map[string]any, error) {
 	f.SetOutput(os.Stderr)
 	flagValues := map[string]*string{}
 	boolValues := map[string]*bool{}
+	intValues := map[string]*int{}
 	for _, field := range spec.Fields {
-		if field.Name == "instance_id" {
+		if field.Name == "instance_id" || field.Name == "script_id" {
 			continue
 		}
 		name := strings.ReplaceAll(field.Name, "_", "-")
-		if field.Type == "boolean" {
+		switch field.Type {
+		case "boolean":
 			boolValues[field.Name] = f.Bool(name, false, field.Description)
-		} else {
+		case "integer":
+			intValues[field.Name] = f.Int(name, 0, field.Description)
+		default:
 			flagValues[field.Name] = f.String(name, "", field.Description)
 		}
 	}
@@ -116,8 +115,13 @@ func parseArgs(spec controlops.Spec, args []string) (map[string]any, error) {
 			values[key] = *v
 			return
 		}
+		if v, ok := intValues[key]; ok {
+			values[key] = *v
+			return
+		}
 		v := *flagValues[key]
-		if fieldType(spec, key) == "string_array" {
+		switch fieldType(spec, key) {
+		case "string_array":
 			parts := []string{}
 			for _, part := range strings.Split(v, ",") {
 				if trimmed := strings.TrimSpace(part); trimmed != "" {
@@ -125,7 +129,14 @@ func parseArgs(spec controlops.Spec, args []string) (map[string]any, error) {
 				}
 			}
 			values[key] = parts
-		} else {
+		case "json_object":
+			var object map[string]any
+			if err := json.Unmarshal([]byte(v), &object); err != nil || object == nil {
+				values[key] = json.RawMessage(v)
+			} else {
+				values[key] = object
+			}
+		default:
 			values[key] = v
 		}
 	})

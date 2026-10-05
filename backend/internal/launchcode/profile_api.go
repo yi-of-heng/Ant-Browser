@@ -27,6 +27,10 @@ type profileDeleter interface {
 	DeleteProfile(profileID string) error
 }
 
+type profileCopier interface {
+	CopyWithMode(profileID string, newName string, mode string) (*browser.Profile, error)
+}
+
 func (s *LaunchServer) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -57,6 +61,9 @@ func (s *LaunchServer) handleProfileByID(w http.ResponseWriter, r *http.Request)
 		return
 	case "stop":
 		s.handleStopProfile(w, r, profileID)
+		return
+	case "copy":
+		s.handleCopyProfile(w, r, profileID)
 		return
 	}
 

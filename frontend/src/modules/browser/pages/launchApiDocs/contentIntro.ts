@@ -409,6 +409,7 @@ curl -H "X-Ant-Api-Key: <your-api-key>" http://127.0.0.1:19876/api/health
 | 实例管理 | \`POST\` | \`/api/profiles\` |
 | 实例管理 | \`GET\` | \`/api/profiles/{profileId}\` |
 | 实例管理 | \`PUT\` | \`/api/profiles/{profileId}\` |
+| 实例管理 | \`POST\` | \`/api/profiles/{profileId}/copy\` |
 | 实例管理 | \`DELETE\` | \`/api/profiles/{profileId}\` |
 | 实例管理 | \`GET\` | \`/api/profiles/{profileId}/status\` |
 | 实例管理 | \`POST\` | \`/api/profiles/{profileId}/stop\` |

@@ -40,6 +40,22 @@ type proxyResponse struct {
 	Items []browser.Proxy `json:"items"`
 }
 
+type automationListResponse struct {
+	Data struct {
+		Items []map[string]any `json:"items"`
+	} `json:"data"`
+}
+
+type automationItemResponse struct {
+	Data struct {
+		Item map[string]any `json:"item"`
+	} `json:"data"`
+}
+
+type automationRunResponse struct {
+	Data map[string]any `json:"data"`
+}
+
 func (c *Client) do(ctx context.Context, method, path string, input any, output any) error {
 	var body io.Reader
 	if input != nil {
@@ -128,6 +144,23 @@ func (c *Client) UpdateProfile(ctx context.Context, id string, input browser.Pro
 func (c *Client) DeleteProfile(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/api/profiles/"+pathEscape(id), nil, nil)
 }
+
+func (c *Client) CopyProfile(ctx context.Context, id, name, mode string, autoLaunch bool) (browser.Profile, error) {
+	var out struct {
+		Profile browser.Profile `json:"profile"`
+	}
+	body := map[string]any{"autoLaunch": autoLaunch}
+	if strings.TrimSpace(name) != "" {
+		body["name"] = strings.TrimSpace(name)
+	}
+	if strings.TrimSpace(mode) != "" {
+		body["mode"] = strings.TrimSpace(mode)
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/profiles/"+pathEscape(id)+"/copy", body, &out); err != nil {
+		return browser.Profile{}, err
+	}
+	return out.Profile, nil
+}
 func (c *Client) StartProfile(ctx context.Context, id string) (browser.Profile, error) {
 	var out struct {
 		OK          bool   `json:"ok"`
@@ -170,6 +203,42 @@ func (c *Client) ListProxies(ctx context.Context) ([]browser.Proxy, error) {
 		return nil, err
 	}
 	return out.Items, nil
+}
+
+func (c *Client) ListAutomationScripts(ctx context.Context) ([]map[string]any, error) {
+	var out automationListResponse
+	if err := c.do(ctx, http.MethodGet, "/api/automation/scripts", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Items, nil
+}
+
+func (c *Client) GetAutomationScript(ctx context.Context, id string) (map[string]any, error) {
+	var out automationItemResponse
+	if err := c.do(ctx, http.MethodGet, "/api/automation/scripts/"+pathEscape(id), nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Item, nil
+}
+
+func (c *Client) RunAutomationScript(ctx context.Context, input map[string]any) (map[string]any, error) {
+	var out automationRunResponse
+	if err := c.do(ctx, http.MethodPost, "/api/automation/scripts/run", input, &out); err != nil {
+		return nil, err
+	}
+	return out.Data, nil
+}
+
+func (c *Client) ListAutomationRuns(ctx context.Context, limit int) ([]map[string]any, error) {
+	path := "/api/automation/scripts/runs"
+	if limit > 0 {
+		path += fmt.Sprintf("?limit=%d", limit)
+	}
+	var out automationListResponse
+	if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Data.Items, nil
 }
 
 func pathEscape(value string) string { return strings.ReplaceAll(strings.TrimSpace(value), "/", "%2F") }

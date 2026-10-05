@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ant Browser Control"
+  short_description: "Operate and extend Ant Browser API, CLI, and MCP"
+  default_prompt: "Use $ant-browser-control to inspect or extend Ant Browser control and automation interfaces."

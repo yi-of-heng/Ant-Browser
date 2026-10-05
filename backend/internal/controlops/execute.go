@@ -25,6 +25,7 @@ func Execute(ctx context.Context, c *controlclient.Client, name string, args map
 		return nil, err
 	}
 	id := stringArg(args, "instance_id")
+	scriptID := stringArg(args, "script_id")
 	switch name {
 	case "health":
 		err := c.Health(ctx)
@@ -62,6 +63,9 @@ func Execute(ctx context.Context, c *controlclient.Client, name string, args map
 		}
 		err := c.DeleteProfile(ctx, id)
 		return map[string]any{"ok": err == nil}, err
+	case "copy_instance":
+		item, err := c.CopyProfile(ctx, id, stringArg(args, "name"), stringArg(args, "mode"), boolArg(args, "auto_launch"))
+		return SafeProfile(item), err
 	case "create_instances_batch":
 		profiles, err := decodeProfiles(args["profiles"])
 		if err != nil {
@@ -83,6 +87,33 @@ func Execute(ctx context.Context, c *controlclient.Client, name string, args map
 		}
 		result["created"], result["items"] = len(items), items
 		return result, nil
+	case "list_automation_scripts":
+		return c.ListAutomationScripts(ctx)
+	case "get_automation_script":
+		return c.GetAutomationScript(ctx, scriptID)
+	case "run_automation_script":
+		input := map[string]any{"scriptId": scriptID}
+		for _, key := range []string{"selector", "target_input", "params"} {
+			if value, ok := args[key]; ok {
+				apiKey := map[string]string{"target_input": "targetInput"}[key]
+				if apiKey == "" {
+					apiKey = key
+				}
+				input[apiKey] = value
+			}
+		}
+		for _, key := range []string{"use_script_selector", "use_script_params"} {
+			if value, ok := args[key]; ok {
+				input[camelCase(key)] = value
+			}
+		}
+		if value, ok := args["timeout_ms"]; ok {
+			input["timeoutMs"] = value
+		}
+		return c.RunAutomationScript(ctx, input)
+	case "list_automation_runs":
+		limit, _ := integerArg(args["limit"])
+		return c.ListAutomationRuns(ctx, limit)
 	}
 	return nil, fmt.Errorf("unhandled operation: %s", name)
 }
@@ -119,9 +150,29 @@ func validate(spec Spec, args map[string]any) error {
 			if _, err := decodeProfiles(value); err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
+		case "json_object":
+			if _, err := decodeJSONObject(value); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+		case "integer":
+			if _, ok := integerArg(value); !ok {
+				return fmt.Errorf("%s must be an integer", name)
+			}
 		}
 	}
 	return nil
+}
+
+func decodeJSONObject(v any) (map[string]any, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, errors.New("must be a JSON object")
+	}
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil || object == nil {
+		return nil, errors.New("must be a JSON object")
+	}
+	return object, nil
 }
 
 func decodeProfiles(v any) ([]browser.ProfileInput, error) {
@@ -157,6 +208,33 @@ func stringArg(args map[string]any, key string) string {
 	return strings.TrimSpace(v)
 }
 func boolArg(args map[string]any, key string) bool { v, _ := args[key].(bool); return v }
+func integerArg(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int64:
+		return int(number), true
+	case float64:
+		if number == float64(int(number)) {
+			return int(number), true
+		}
+	case json.Number:
+		parsed, err := number.Int64()
+		if err == nil {
+			return int(parsed), true
+		}
+	}
+	return 0, false
+}
+func camelCase(value string) string {
+	parts := strings.Split(value, "_")
+	for i := 1; i < len(parts); i++ {
+		if parts[i] != "" {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
 func newProfile(args map[string]any) browser.ProfileInput {
 	var p browser.ProfileInput
 	patchProfile(&p, args)

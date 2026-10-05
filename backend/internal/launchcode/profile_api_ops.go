@@ -100,6 +100,16 @@ func (s *LaunchServer) deleteCreatedProfile(profileID string) error {
 	return nil
 }
 
+func (s *LaunchServer) copyProfileInternal(profileID, newName, mode string) (*browser.Profile, error) {
+	if copier, ok := s.starter.(profileCopier); ok {
+		return copier.CopyWithMode(profileID, newName, mode)
+	}
+	if s.browserMgr != nil {
+		return s.browserMgr.CopyWithMode(profileID, newName, mode)
+	}
+	return nil, http.ErrNotSupported
+}
+
 func (s *LaunchServer) deleteProfileInternal(profileID string) error {
 	return s.deleteCreatedProfile(profileID)
 }

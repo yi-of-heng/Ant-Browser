@@ -8,6 +8,7 @@ export const DOC_API_PROFILES_LAUNCH = `# 实例与启动
 | \`POST\` | \`/api/profiles\` | 创建实例 |
 | \`GET\` | \`/api/profiles/{profileId}\` | 查单个实例 |
 | \`PUT\` | \`/api/profiles/{profileId}\` | 更新实例 |
+| \`POST\` | \`/api/profiles/{profileId}/copy\` | 复制实例并返回新 ID |
 | \`DELETE\` | \`/api/profiles/{profileId}\` | 删除实例 |
 | \`GET\` | \`/api/profiles/{profileId}/status\` | 查实例运行态 |
 | \`POST\` | \`/api/profiles/{profileId}/stop\` | 停止实例 |

@@ -29,7 +29,10 @@ go build -o ./build/ant-mcp ./backend/cmd/ant-mcp
 | Update an instance | `profiles update INSTANCE_ID` | `update_instance` |
 | Start/stop an instance | `profiles start/stop INSTANCE_ID` | `start_instance` / `stop_instance` |
 | Delete an instance | `profiles delete INSTANCE_ID --confirm` | `delete_instance` (`confirm=true`) |
+| Copy an instance | `profiles copy INSTANCE_ID` | `copy_instance` |
 | Batch create | `profiles create-batch FILE.json` | `create_instances_batch` |
+| List/get/run automation | `automation scripts list/get/run` | `list_automation_scripts` / `get_automation_script` / `run_automation_script` |
+| Automation run history | `automation runs list` | `list_automation_runs` |
 
 The CLI uses kebab-case flags (`--proxy-id`); MCP uses the corresponding
 snake-case argument (`proxy_id`). Sensitive connection strings, local paths,
@@ -50,7 +53,11 @@ export ANT_BROWSER_API_KEY=API_KEY   # only needed when API auth is enabled
 ./build/antctl profiles start PROFILE_ID
 ./build/antctl profiles stop PROFILE_ID
 ./build/antctl profiles delete PROFILE_ID --confirm
+./build/antctl profiles copy PROFILE_ID --name "Google-01-cycle-002" --auto-launch
 ./build/antctl profiles create-batch ./profiles.json
+./build/antctl automation scripts list
+./build/antctl automation scripts run SCRIPT_ID --selector '{"profileId":"PROFILE_ID"}' --timeout-ms 300000
+./build/antctl automation runs list --limit 20
 ```
 
 `profiles create-batch` accepts a JSON array of `browser.ProfileInput` objects.
@@ -77,6 +84,6 @@ Register the built binary as a local stdio MCP server:
 
 Keep the server on localhost and enable the Launch API key before exposing it
 outside the machine. Proxy CRUD, proxy health testing, extension management,
-cores, groups, backups and automation remain outside this first shared
-operation set; they should be added to the Launch API and operation catalog
-before being exposed to either adapter.
+cores, groups and backups remain outside this shared operation set. The
+automation operations call the existing Launch API script runner; they do not
+create a second automation runtime.

@@ -99,6 +99,56 @@ export const PROFILE_API_ENDPOINT_DOCS: StructuredApiEndpointDoc[] = [
     ],
   },
   {
+    id: 'api-profiles-copy-detail',
+    parentId: 'api-profiles-launch',
+    label: '复制实例',
+    method: 'POST',
+    path: '/api/profiles/{profileId}/copy',
+    purpose: '复制实例并返回新的实例 ID，源实例保持不变。',
+    description: '创建新的持久化实例，默认生成新的用户数据目录和指纹种子，同时保留源实例的代理绑定、内核、标签和分组配置。',
+    fields: [
+      { name: 'profileId', type: 'string', required: true, location: 'Path', description: '源实例 ID。' },
+      { name: 'name', type: 'string', required: false, location: 'Body', description: '新实例名称。' },
+      { name: 'mode', type: 'string', required: false, location: 'Body', description: 'auto_fingerprint 或 regular，默认 auto_fingerprint。' },
+      { name: 'autoLaunch', type: 'boolean', required: false, location: 'Body', description: '复制后是否立即启动。' },
+      { name: 'start', type: 'object', required: false, location: 'Body', description: '自动启动时附加的启动参数。' },
+    ],
+    requestExample: {
+      language: 'bash',
+      code: ({ launchBaseUrl, authHeader }) => `curl -X POST ${launchBaseUrl}/api/profiles/550e8400-e29b-41d4-a716-446655440000/copy \\
+  -H "Content-Type: application/json" \\
+  -H "${authHeader}: <your-api-key>" \\
+  -d '{"name":"buyer-001-cycle-002","mode":"auto_fingerprint","autoLaunch":true}'`,
+    },
+    responseExample: {
+      language: 'json',
+      code: () => `{
+  "ok": true,
+  "created": true,
+  "launched": true,
+  "sourceProfileId": "550e8400-e29b-41d4-a716-446655440000",
+  "profileId": "660e8400-e29b-41d4-a716-446655440000",
+  "profileName": "buyer-001-cycle-002",
+  "profile": {
+    "profileId": "660e8400-e29b-41d4-a716-446655440000",
+    "profileName": "buyer-001-cycle-002",
+    "proxyId": "proxy-us",
+    "running": true
+  }
+}`,
+    },
+    responseCodes: [
+      { code: '201', description: '复制成功。' },
+      { code: '404', description: '源实例不存在。' },
+      { code: '409', description: '实例数量已达上限。' },
+    ],
+    notes: [
+      '源实例不会被修改或删除。',
+      'regular 会保留源指纹参数；默认 auto_fingerprint 会生成新的指纹种子。',
+      '复制实例仍然绑定源实例的代理节点。',
+    ],
+  },
+  {
     id: 'api-profiles-get-detail',
     parentId: 'api-profiles-launch',
     label: '单个实例',

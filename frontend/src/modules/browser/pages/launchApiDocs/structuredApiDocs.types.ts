@@ -9,6 +9,7 @@ export type StructuredApiDocId =
   | StructuredApiSectionId
   | 'api-profiles-list-detail'
   | 'api-profiles-create-detail'
+  | 'api-profiles-copy-detail'
   | 'api-profiles-get-detail'
   | 'api-profiles-update-detail'
   | 'api-profiles-delete-detail'
