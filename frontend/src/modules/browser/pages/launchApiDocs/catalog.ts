@@ -16,6 +16,7 @@ import {
   DOC_API_RUNTIME,
 } from './contentApi'
 import { DOC_API_SUPPORT } from './contentReference'
+import { DOC_CONTROL_CLI, DOC_CONTROL_MCP, DOC_CONTROL_SKILL } from './contentControlClients'
 import { getStructuredApiHiddenDocItems } from './structuredApiDocs'
 
 export interface LaunchDocDemoConfig {
@@ -51,7 +52,7 @@ export const DOC_GROUPS: LaunchDocGroup[] = [
       },
       {
         id: 'tutorial-skill',
-        label: 'SKILL 使用',
+        label: 'OpenClaw 接入',
         summary: 'OpenClaw 接入 ant-chrome-openclaw 的安装、提问模板和稳定使用规则。',
         content: DOC_SKILL_USAGE,
       },
@@ -60,6 +61,30 @@ export const DOC_GROUPS: LaunchDocGroup[] = [
         label: '操作流程',
         summary: '按步骤串起内核、代理、实例和接口调用。',
         content: DOC_OPERATION_FLOW,
+      },
+    ],
+  },
+  {
+    id: 'agent',
+    label: 'Agent 与命令行',
+    items: [
+      {
+        id: 'agent-cli',
+        label: 'antctl 命令行',
+        summary: '用 CLI 创建、复制和管理实例，执行自动化脚本。',
+        content: DOC_CONTROL_CLI,
+      },
+      {
+        id: 'agent-mcp',
+        label: 'ant-mcp 接入',
+        summary: '连接 Claude、Antigravity 等 MCP 客户端并发现工具。',
+        content: DOC_CONTROL_MCP,
+      },
+      {
+        id: 'agent-skill',
+        label: 'Agent Skill',
+        summary: '在其他 Agent 中复用 ant-browser-control 操作指南。',
+        content: DOC_CONTROL_SKILL,
       },
     ],
   },
