@@ -1,42 +1,65 @@
 # Agent control
 
-Ant Browser now exposes two scriptable clients over the local Launch API:
+Ant Browser exposes two adapters over the same local Launch API:
 
 - `antctl`: deterministic CLI for shell scripts and batch jobs.
 - `ant-mcp`: MCP stdio server for an agent host such as Codex or Claude.
 
-Both clients use the same HTTP API and never open `app.db` directly.
+Both adapters use the shared operation catalog in
+`backend/internal/controlops` and the typed HTTP client in
+`backend/internal/controlclient`. They never open `app.db` directly. A tool
+name and its arguments therefore have the same meaning in CLI and MCP.
 
 ## Build
 
 ```sh
-export PATH="/opt/homebrew/opt/go@1.22/bin:/opt/homebrew/bin:$PATH"
 go build -o ./build/antctl ./backend/cmd/antctl
 go build -o ./build/ant-mcp ./backend/cmd/ant-mcp
 ```
 
+## Operations
+
+| Operation | CLI | MCP tool |
+|---|---|---|
+| Health check | `health` | `health` |
+| List proxy nodes | `proxies list` | `list_proxy_nodes` |
+| List instances | `profiles list` | `list_instances` |
+| Get an instance | `profiles get INSTANCE_ID` | `get_instance` |
+| Create an instance | `profiles create` | `create_instance` |
+| Update an instance | `profiles update INSTANCE_ID` | `update_instance` |
+| Start/stop an instance | `profiles start/stop INSTANCE_ID` | `start_instance` / `stop_instance` |
+| Delete an instance | `profiles delete INSTANCE_ID --confirm` | `delete_instance` (`confirm=true`) |
+| Batch create | `profiles create-batch FILE.json` | `create_instances_batch` |
+
+The CLI uses kebab-case flags (`--proxy-id`); MCP uses the corresponding
+snake-case argument (`proxy_id`). Sensitive connection strings, local paths,
+launch arguments and fingerprint arguments are not returned by either adapter.
+
 ## CLI examples
 
 ```sh
+export ANT_BROWSER_URL=http://127.0.0.1:19876
+export ANT_BROWSER_API_KEY=API_KEY   # only needed when API auth is enabled
+
 ./build/antctl health
 ./build/antctl proxies list
 ./build/antctl profiles list
-./build/antctl profiles create --name "Google-01" --proxy-id NODE_ID --group-id google
-./build/antctl profiles update PROFILE_ID --proxy-id NODE_ID
+./build/antctl profiles get PROFILE_ID
+./build/antctl profiles create --name "Google-01" --proxy-id NODE_ID --group-id google --tags oauth,google
+./build/antctl profiles update PROFILE_ID --proxy-id NODE_ID --keywords account-1
 ./build/antctl profiles start PROFILE_ID
 ./build/antctl profiles stop PROFILE_ID
+./build/antctl profiles delete PROFILE_ID --confirm
 ./build/antctl profiles create-batch ./profiles.json
 ```
 
 `profiles create-batch` accepts a JSON array of `browser.ProfileInput` objects.
-The command exits on the first failed item and prints created profiles as JSON.
-
-Use `--base-url` and `--api-key`, or set `ANT_BROWSER_URL` and
-`ANT_BROWSER_API_KEY`.
+It returns the successfully created items and a `failedIndex` if a later item
+fails; already-created items are intentionally not rolled back.
 
 ## MCP configuration
 
-Build `ant-mcp` and register it as a local stdio MCP server:
+Register the built binary as a local stdio MCP server:
 
 ```json
 {
@@ -52,10 +75,8 @@ Build `ant-mcp` and register it as a local stdio MCP server:
 }
 ```
 
-Current tools: `list_instances`, `list_proxy_nodes`, `create_instance`,
-`update_instance`, `start_instance`, `stop_instance`, and
-`delete_instance`. Deletion requires `confirm=true`.
-
-MCP responses redact proxy connection strings, user-data paths, launch args,
-and fingerprint arguments. Keep the server on localhost and enable the
-Launch API key before exposing it outside the machine.
+Keep the server on localhost and enable the Launch API key before exposing it
+outside the machine. Proxy CRUD, proxy health testing, extension management,
+cores, groups, backups and automation remain outside this first shared
+operation set; they should be added to the Launch API and operation catalog
+before being exposed to either adapter.

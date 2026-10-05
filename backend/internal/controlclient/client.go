@@ -129,11 +129,36 @@ func (c *Client) DeleteProfile(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/api/profiles/"+pathEscape(id), nil, nil)
 }
 func (c *Client) StartProfile(ctx context.Context, id string) (browser.Profile, error) {
-	var out profileResponse
+	var out struct {
+		OK          bool   `json:"ok"`
+		ProfileId   string `json:"profileId"`
+		ProfileName string `json:"profileName"`
+		DebugPort   int    `json:"debugPort"`
+		DebugReady  bool   `json:"debugReady"`
+		Pid         int    `json:"pid"`
+		LaunchCode  string `json:"launchCode"`
+	}
 	if err := c.do(ctx, http.MethodPost, "/api/launch", map[string]string{"profileId": id}, &out); err != nil {
 		return browser.Profile{}, err
 	}
-	return out.Profile, nil
+	p, err := c.GetProfile(ctx, id)
+	if err == nil {
+		p.Running = true
+		if out.DebugPort > 0 {
+			p.DebugPort = out.DebugPort
+			p.DebugReady = out.DebugReady
+			p.Pid = out.Pid
+		}
+		return p, nil
+	}
+	return browser.Profile{
+		ProfileId:   out.ProfileId,
+		ProfileName: out.ProfileName,
+		DebugPort:   out.DebugPort,
+		DebugReady:  out.DebugReady,
+		Pid:         out.Pid,
+		Running:     true,
+	}, nil
 }
 func (c *Client) StopProfile(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodPost, "/api/profiles/"+pathEscape(id)+"/stop", nil, nil)
