@@ -1,5 +1,6 @@
 import { AlertCircle, ArrowLeft, CheckCircle2, ExternalLink, Terminal } from 'lucide-react'
 import { Button } from '../../../../shared/components'
+import { BrowserOpenURL } from '../../../../wailsjs/runtime/runtime'
 
 interface LaunchDocsHeaderProps {
   activeGroupLabel: string
@@ -54,7 +55,7 @@ export function LaunchDocsHeader({
               <ArrowLeft className="h-4 w-4" />
               实例列表
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => window.open('https://github.com/yi-of-heng/Ant-Browser', '_blank')}>
+            <Button size="sm" variant="ghost" onClick={() => BrowserOpenURL('https://github.com/yi-of-heng/Ant-Browser')}>
               <ExternalLink className="h-4 w-4" />
               GitHub
             </Button>
