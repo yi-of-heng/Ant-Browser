@@ -54,6 +54,14 @@ func (a *App) waitBrowserProcess(profileId string, monitor *browserProcessMonito
 			return
 		}
 		if exists && profile.Running && profile.DebugPort == debugPort && profile.DebugReady && canConnectDebugPort(debugPort, 250*time.Millisecond) {
+			if androidConfig, enabled, err := parseAndroidEmulationConfig(profile.FingerprintArgs); enabled && err == nil {
+				if applyErr := applyAndroidEmulationCDP(debugPort, androidConfig); applyErr != nil {
+					logger.New("Browser").Warn("后台附着时 Android 网页模拟 CDP 应用失败",
+						logger.F("profile_id", profileId),
+						logger.F("error", applyErr.Error()),
+					)
+				}
+			}
 			delete(a.browserMgr.BrowserProcesses, profileId)
 			profile.Pid = 0
 			shouldMonitorDetached = true

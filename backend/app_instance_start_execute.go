@@ -66,8 +66,21 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor)
 		if readyErr == nil {
 			a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, stableDebugPort, true, "")
+			if plan.androidEmulation != nil {
+				if err := applyAndroidEmulationCDP(stableDebugPort, plan.androidEmulation); err != nil {
+					profile.RuntimeWarning = "Android 网页模拟已启动，但 CDP 设备参数应用失败：" + err.Error()
+					log.Warn("Android 网页模拟 CDP 应用失败",
+						logger.F("profile_id", input.ProfileID),
+						logger.F("debug_port", stableDebugPort),
+						logger.F("error", err.Error()),
+					)
+				}
+			}
 			if plan.extensionWarning != "" {
-				profile.RuntimeWarning = plan.extensionWarning
+				if profile.RuntimeWarning != "" {
+					profile.RuntimeWarning += "；"
+				}
+				profile.RuntimeWarning += plan.extensionWarning
 			}
 			a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 			if plan.acquiredProxyBridge.valid() {

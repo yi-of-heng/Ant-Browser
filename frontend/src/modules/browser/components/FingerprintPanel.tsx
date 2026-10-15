@@ -33,6 +33,7 @@ const PLATFORM_OPTIONS = [
   { value: 'windows', label: 'Windows' },
   { value: 'macos', label: 'macOS' },
   { value: 'linux', label: 'Linux' },
+  { value: 'android', label: 'Android（网页模拟）' },
 ]
 
 const LANG_OPTIONS = [
@@ -64,6 +65,23 @@ const BRAND_VERSION_OPTIONS = [
 const PLATFORM_VERSION_OPTIONS = [
   { value: '10.0.0', label: 'Windows 10 / 10.0.0' },
   { value: '15.2.0', label: 'macOS 15.2 / 15.2.0' },
+  { value: '13', label: 'Android 13' },
+  { value: '14', label: 'Android 14' },
+  { value: '15', label: 'Android 15' },
+]
+
+const ANDROID_MODEL_OPTIONS = [
+  { value: 'Pixel 7', label: 'Pixel 7' },
+  { value: 'Pixel 8', label: 'Pixel 8' },
+  { value: 'SM-S911B', label: 'Galaxy S23 (SM-S911B)' },
+  { value: 'SM-S928B', label: 'Galaxy S24 Ultra (SM-S928B)' },
+]
+
+const ANDROID_VIEWPORT_OPTIONS = [
+  { value: '412,915', label: '412 × 915' },
+  { value: '393,852', label: '393 × 852' },
+  { value: '360,780', label: '360 × 780' },
+  { value: '430,932', label: '430 × 932' },
 ]
 
 const ACCEPT_LANG_OPTIONS = LANG_OPTIONS
@@ -151,8 +169,12 @@ const ADVANCED_ARG_HELP_ROWS = [
   { arg: '--fingerprint=<seed>', usage: '统一指纹种子；留空时启动按实例 ID 补稳定种子', example: '--fingerprint=123456' },
   { arg: '--fingerprint-brand=<brand>', usage: '浏览器品牌；影响 UA / UA-CH 品牌口径', example: '--fingerprint-brand=Chrome' },
   { arg: '--fingerprint-brand-version=<version>', usage: '浏览器版本；完整版本优先，检测时 UA 降级按主版本口径匹配', example: '--fingerprint-brand-version=144.0.7559.132' },
-  { arg: '--fingerprint-platform=<platform>', usage: '系统平台画像；支持 windows、macos、linux', example: '--fingerprint-platform=windows' },
+  { arg: '--fingerprint-platform=<platform>', usage: '系统平台画像；支持 windows、macos、linux；android 为实验性网页模拟', example: '--fingerprint-platform=android' },
   { arg: '--fingerprint-platform-version=<version>', usage: '系统版本；检测时按 UA / UA-CH 可见版本前缀匹配', example: '--fingerprint-platform-version=10.0.0' },
+  { arg: '--fingerprint-mobile-model=<model>', usage: 'Android 设备型号；由 CDP 应用到 UA-CH', example: '--fingerprint-mobile-model=Pixel 7' },
+  { arg: '--fingerprint-mobile-viewport=<w,h>', usage: 'Android CSS 视口；例如 412,915', example: '--fingerprint-mobile-viewport=412,915' },
+  { arg: '--fingerprint-mobile-dpr=<number>', usage: 'Android 设备像素比；例如 2.625', example: '--fingerprint-mobile-dpr=2.625' },
+  { arg: '--fingerprint-mobile-touch-points=<n>', usage: '最大触控点数量；由 CDP 启用触摸模拟', example: '--fingerprint-mobile-touch-points=5' },
   { arg: '--lang=<locale>', usage: '主语言；同时会补默认 Accept-Language', example: '--lang=ja-JP' },
   { arg: '--accept-lang=<list>', usage: '语言列表；逗号分隔，按 navigator.languages 前缀比对', example: '--accept-lang=ja-JP,ja' },
   { arg: '--timezone=<iana>', usage: '时区；使用 IANA 时区名', example: '--timezone=Asia/Tokyo' },
@@ -405,7 +427,26 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
             <EditableOptionInput value={config.brandVersion ?? ''} onChange={nextValue => update({ brandVersion: nextValue || undefined })} options={BRAND_VERSION_OPTIONS} placeholder="默认跟随内核" />
           </FormItem>
           <FormItem label="平台">
-            <Select value={config.platform ?? ''} onChange={e => update({ platform: e.target.value || undefined })} options={PLATFORM_OPTIONS} />
+            <Select
+              value={config.platform ?? ''}
+              onChange={e => {
+                const nextPlatform = e.target.value || undefined
+                if (nextPlatform === 'android') {
+                  update({
+                    platform: nextPlatform,
+                    platformVersion: config.platformVersion || '14',
+                    mobile: '1',
+                    mobileModel: config.mobileModel || 'Pixel 7',
+                    mobileViewport: config.mobileViewport || '412,915',
+                    mobileDpr: config.mobileDpr || '2.625',
+                    mobileTouchPoints: config.mobileTouchPoints || '5',
+                  })
+                } else {
+                  update({ platform: nextPlatform, mobile: undefined })
+                }
+              }}
+              options={PLATFORM_OPTIONS}
+            />
           </FormItem>
           <FormItem label="系统版本">
             <EditableOptionInput value={config.platformVersion ?? ''} onChange={nextValue => update({ platformVersion: nextValue || undefined })} options={PLATFORM_VERSION_OPTIONS} placeholder="如 15.2.0" />
@@ -425,6 +466,31 @@ export function FingerprintPanel({ value, onChange }: FingerprintPanelProps) {
           </FormItem>
         </div>
       </FingerprintSection>
+
+      {config.platform === 'android' && (
+        <FingerprintSection title="Android 网页模拟（实验性）">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            这是桌面 Chromium 的移动网页模拟，不是完整 Android 系统。启动后会通过 CDP 应用移动视口、触摸、UA 和 Client Hints；GPU、字体、TLS 等宿主特征仍可能与真实手机不同。
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormItem label="设备型号">
+              <EditableOptionInput value={config.mobileModel ?? ''} onChange={nextValue => update({ mobileModel: nextValue || undefined })} options={ANDROID_MODEL_OPTIONS} placeholder="Pixel 7" />
+            </FormItem>
+            <FormItem label="Android 视口">
+              <Select value={config.mobileViewport ?? ''} onChange={e => update({ mobileViewport: e.target.value || undefined })} options={ANDROID_VIEWPORT_OPTIONS} />
+            </FormItem>
+            <FormItem label="设备像素比（DPR）">
+              <Input value={config.mobileDpr ?? ''} onChange={e => update({ mobileDpr: e.target.value || undefined })} placeholder="2.625" />
+            </FormItem>
+            <FormItem label="最大触控点">
+              <Input value={config.mobileTouchPoints ?? ''} onChange={e => update({ mobileTouchPoints: e.target.value || undefined })} placeholder="5" />
+            </FormItem>
+            <FormItem label="自定义 Android UA（可选）">
+              <Input value={config.mobileUserAgent ?? ''} onChange={e => update({ mobileUserAgent: e.target.value || undefined })} placeholder="留空按型号和版本生成" />
+            </FormItem>
+          </div>
+        </FingerprintSection>
+      )}
 
       <FingerprintSection title="设备与网络">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

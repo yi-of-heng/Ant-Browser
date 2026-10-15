@@ -56,6 +56,18 @@ var fingerprintStableArgLabels = map[string]string{
 	"--disable-spoofing":                       "排除伪装",
 }
 
+// Android simulation parameters are consumed by the Go launcher and applied
+// through CDP after the page target is ready. They must not be forwarded to
+// Chromium as unknown command-line switches.
+var fingerprintAndroidArgLabels = map[string]string{
+	"--fingerprint-mobile":              "Android 网页模拟",
+	"--fingerprint-mobile-model":        "Android 设备型号",
+	"--fingerprint-mobile-ua":           "Android User-Agent",
+	"--fingerprint-mobile-viewport":     "Android 视口",
+	"--fingerprint-mobile-dpr":          "Android DPR",
+	"--fingerprint-mobile-touch-points": "Android 触控点",
+}
+
 var fingerprintNoEffectArgLabels = map[string]string{
 	"--fingerprint-color-depth":                 "色深",
 	"--fingerprint-device-memory":               "设备内存",
@@ -239,6 +251,16 @@ func buildBrowserFingerprintLaunchPlanForHost(profileId string, rawArgs []string
 		key := browserFingerprintArgKey(arg)
 		if key == "" {
 			plan.launchArgs = append(plan.launchArgs, arg)
+			continue
+		}
+		if label, ok := fingerprintAndroidArgLabels[key]; ok {
+			plan.rows = append(plan.rows, BrowserFingerprintCapabilityRow{
+				Capability: label,
+				Status:     "deferred",
+				InputArg:   arg,
+				Action:     "CDP 应用",
+				Note:       "Android 网页模拟参数由启动后的 CDP 会话应用，不直接作为 Chromium 开关传递",
+			})
 			continue
 		}
 		if chrome144Plus {
@@ -431,6 +453,29 @@ func buildBrowserFingerprintLaunchPlanForHost(profileId string, rawArgs []string
 		}
 	}
 
+	// Keep the two global Chromium switches as a fallback for newly-created
+	// targets. The first page also receives the richer CDP metrics/UA-CH
+	// override after the debug port becomes ready.
+	if androidConfig, enabled, androidErr := parseAndroidEmulationConfig(args); enabled && androidErr == nil {
+		if browserArgWithKey(plan.launchArgs, "--user-agent") == "" {
+			userAgentArg := "--user-agent=" + androidConfig.UserAgent
+			plan.launchArgs = append(plan.launchArgs, userAgentArg)
+			plan.rows = append(plan.rows, BrowserFingerprintCapabilityRow{
+				Capability: "Android User-Agent",
+				Status:     "injected",
+				RuntimeArg: userAgentArg,
+				Action:     "后端补齐",
+				Note:       "作为新标签的全局回退；首个页面同时通过 CDP 应用 UA-CH",
+			})
+		}
+		if browserArgWithKey(plan.launchArgs, "--force-device-scale-factor") == "" {
+			plan.launchArgs = append(plan.launchArgs, fmt.Sprintf("--force-device-scale-factor=%s", strconv.FormatFloat(androidConfig.DPR, 'f', -1, 64)))
+		}
+		if browserArgWithKey(plan.launchArgs, "--touch-events") == "" {
+			plan.launchArgs = append(plan.launchArgs, "--touch-events=enabled")
+		}
+	}
+
 	targetPlatform, targetPlatformArg := fingerprintPlatformFromArgs(args)
 	if targetPlatform != "" && hostPlatform != "" && targetPlatform != hostPlatform && !hasStringValue(disableSpoofingValues, "font") {
 		disableSpoofingValues = appendUniqueStringValues(disableSpoofingValues, "font")
@@ -478,6 +523,8 @@ func normalizeFingerprintPlatform(value string) string {
 		return "macos"
 	case "linux":
 		return "linux"
+	case "android", "android-mobile", "android_mobile":
+		return "android"
 	default:
 		return ""
 	}

@@ -26,6 +26,7 @@ type browserStartPlan struct {
 	chromeBinaryPath string
 	userDataDir      string
 	args             []string
+	androidEmulation *androidEmulationConfig
 
 	deferredStartTargets []string
 	deferredStartNewTabs bool
@@ -167,6 +168,10 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	}
 
 	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession)
+	androidEmulation, androidEnabled, androidErr := parseAndroidEmulationConfig(append(append([]string{}, profile.FingerprintArgs...), sanitizedExtraLaunchArgs...))
+	if androidErr != nil {
+		return nil, fmt.Errorf("Android 网页模拟配置无效：%w", androidErr)
+	}
 	// 插件持久安装助手进程复用实例的调试端口与代理/指纹参数：
 	// 若此时实例浏览器尚未运行，安装助手进程就是实例浏览器本身，
 	// 缺少调试端口会导致后续正式启动被 Chrome 单实例交接、误报“就绪前退出”。
@@ -176,10 +181,16 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 	extensionWarning := joinBrowserStartExtensionWarnings(extensionWarnings)
 
 	return &browserStartPlan{
-		profile:              profile,
-		chromeBinaryPath:     chromeBinaryPath,
-		userDataDir:          userDataDir,
-		args:                 instanceArgs,
+		profile:          profile,
+		chromeBinaryPath: chromeBinaryPath,
+		userDataDir:      userDataDir,
+		args:             instanceArgs,
+		androidEmulation: func() *androidEmulationConfig {
+			if androidEnabled {
+				return androidEmulation
+			}
+			return nil
+		}(),
 		deferredStartTargets: deferredStartTargets,
 		deferredStartNewTabs: deferredStartNewTabs,
 		effectiveProxy:       effectiveProxy,

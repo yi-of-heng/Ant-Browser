@@ -34,8 +34,8 @@ export const FINGERPRINT_CAPABILITIES: FingerprintCapabilityItem[] = [
     id: 'identity',
     name: '浏览器身份',
     mode: 'configurable',
-    coverage: '控制 UA、navigator.platform、UA-CH 的品牌和平台画像',
-    args: ['--fingerprint-brand', '--fingerprint-brand-version', '--fingerprint-platform', '--fingerprint-platform-version'],
+    coverage: '控制 UA、navigator.platform、UA-CH 的品牌和平台画像；Android 模式通过启动后 CDP 应用移动 UA/Client Hints',
+    args: ['--fingerprint-brand', '--fingerprint-brand-version', '--fingerprint-platform', '--fingerprint-platform-version', '--fingerprint-mobile-model'],
   },
   {
     id: 'locale',

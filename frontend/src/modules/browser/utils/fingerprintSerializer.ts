@@ -23,6 +23,12 @@ export interface FingerprintConfig {
   brandVersion?: string    // --fingerprint-brand-version=
   platform?: string        // --fingerprint-platform=
   platformVersion?: string // --fingerprint-platform-version=
+  mobile?: string          // --fingerprint-mobile
+  mobileModel?: string     // --fingerprint-mobile-model=
+  mobileUserAgent?: string // --fingerprint-mobile-ua=
+  mobileViewport?: string  // --fingerprint-mobile-viewport=
+  mobileDpr?: string       // --fingerprint-mobile-dpr=
+  mobileTouchPoints?: string // --fingerprint-mobile-touch-points=
   lang?: string            // --lang=
   acceptLang?: string      // --accept-lang=
   timezone?: string        // --timezone=
@@ -96,6 +102,11 @@ export const KEY_MAP: Record<string, keyof FingerprintConfig> = {
   '--fingerprint-brand-version': 'brandVersion',
   '--fingerprint-platform': 'platform',
   '--fingerprint-platform-version': 'platformVersion',
+  '--fingerprint-mobile-model': 'mobileModel',
+  '--fingerprint-mobile-ua': 'mobileUserAgent',
+  '--fingerprint-mobile-viewport': 'mobileViewport',
+  '--fingerprint-mobile-dpr': 'mobileDpr',
+  '--fingerprint-mobile-touch-points': 'mobileTouchPoints',
   '--lang': 'lang',
   '--accept-lang': 'acceptLang',
   '--timezone': 'timezone',
@@ -131,13 +142,14 @@ export interface FingerprintValidationResult {
 
 const FLAG_MAP: Record<string, keyof FingerprintConfig> = {
   '--disable-non-proxied-udp': 'webrtcPolicy',
+  '--fingerprint-mobile': 'mobile',
   '--fingerprinting-canvas-image-data-noise': 'canvasNoise',
   '--fingerprinting-client-rects-noise': 'clientRectsNoise',
 }
 
 const KERNEL_SPOOFING_KEYS = new Set(['font', 'audio', 'canvas', 'clientrects', 'gpu'])
 const KERNEL_BRANDS = new Set(['Chrome', 'Edge', 'Opera', 'Vivaldi'])
-const KERNEL_PLATFORMS = new Set(['windows', 'linux', 'macos'])
+const KERNEL_PLATFORMS = new Set(['windows', 'linux', 'macos', 'android'])
 const KERNEL_WEBRTC_POLICIES = new Set(['disable_non_proxied_udp', 'default_public_interface_only', 'default_public_and_private_interfaces'])
 const KERNEL_SUPPORTED_ARG_KEYS = new Set([
   '--fingerprint',
@@ -145,6 +157,12 @@ const KERNEL_SUPPORTED_ARG_KEYS = new Set([
   '--fingerprint-brand-version',
   '--fingerprint-platform',
   '--fingerprint-platform-version',
+  '--fingerprint-mobile',
+  '--fingerprint-mobile-model',
+  '--fingerprint-mobile-ua',
+  '--fingerprint-mobile-viewport',
+  '--fingerprint-mobile-dpr',
+  '--fingerprint-mobile-touch-points',
   '--fingerprint-hardware-concurrency',
   '--fingerprinting-canvas-image-data-noise',
   '--fingerprinting-client-rects-noise',
@@ -195,6 +213,14 @@ export function serialize(config: FingerprintConfig): string[] {
   if (config.brandVersion) args.push(`--fingerprint-brand-version=${config.brandVersion}`)
   if (config.platform) args.push(`--fingerprint-platform=${normalizeFingerprintPlatform(config.platform)}`)
   if (config.platformVersion) args.push(`--fingerprint-platform-version=${config.platformVersion}`)
+  if (normalizeFingerprintPlatform(config.platform || '') === 'android') {
+    args.push('--fingerprint-mobile')
+    if (config.mobileModel) args.push(`--fingerprint-mobile-model=${config.mobileModel}`)
+    if (config.mobileUserAgent) args.push(`--fingerprint-mobile-ua=${config.mobileUserAgent}`)
+    if (config.mobileViewport) args.push(`--fingerprint-mobile-viewport=${config.mobileViewport}`)
+    if (config.mobileDpr) args.push(`--fingerprint-mobile-dpr=${config.mobileDpr}`)
+    if (config.mobileTouchPoints) args.push(`--fingerprint-mobile-touch-points=${config.mobileTouchPoints}`)
+  }
   if (config.lang) {
     args.push(`--lang=${config.lang}`)
     args.push(`--accept-lang=${config.acceptLang || buildAcceptLanguage(config.lang)}`)
@@ -242,6 +268,8 @@ export function deserialize(args: string[]): FingerprintConfig {
       const field = FLAG_MAP[arg]
       if (field === 'webrtcPolicy') {
         config.webrtcPolicy = 'disable_non_proxied_udp'
+      } else if (field === 'mobile') {
+        config.mobile = '1'
       } else if (field === 'canvasNoise' || field === 'clientRectsNoise') {
         ;(config as Record<string, unknown>)[field] = '1'
       } else {
@@ -323,7 +351,12 @@ export function validateFingerprintArgs(rawArgs: string[]): FingerprintValidatio
     issues.push({ level: 'warning', message: '品牌版本建议使用数字点分格式，例如 144.0.7559.132' })
   }
   if (config.platform && !KERNEL_PLATFORMS.has(normalizeFingerprintPlatform(config.platform))) {
-    issues.push({ level: 'error', message: '平台仅支持 windows / linux / macos' })
+    issues.push({ level: 'error', message: '平台仅支持 windows / linux / macos / android' })
+  }
+  if (normalizeFingerprintPlatform(config.platform || '') === 'android') {
+    if (!config.mobileModel) issues.push({ level: 'info', message: '未设置 Android 设备型号，将使用 Pixel 7 默认画像' })
+    if (!config.mobileViewport) issues.push({ level: 'info', message: '未设置 Android 视口，将使用 412,915 默认视口' })
+    if (!config.mobileDpr) issues.push({ level: 'info', message: '未设置 Android DPR，将使用 2.625 默认值' })
   }
   if (config.platformVersion && !isSafeVersionText(config.platformVersion)) {
     issues.push({ level: 'warning', message: '系统版本建议只包含字母、数字、点、横线和下划线' })
@@ -456,6 +489,48 @@ export interface FingerprintPreset {
 }
 
 export const FINGERPRINT_PRESETS: FingerprintPreset[] = [
+  {
+    id: 'android-pixel-7',
+    name: 'Android / Pixel 7 / Chrome',
+    description: '实验性 Android 网页模拟；通过 CDP 应用移动视口、触摸和 UA-CH',
+    config: {
+      brand: 'Chrome',
+      brandVersion: '144.0.7559.132',
+      platform: 'android',
+      platformVersion: '14',
+      mobile: '1',
+      mobileModel: 'Pixel 7',
+      mobileViewport: '412,915',
+      mobileDpr: '2.625',
+      mobileTouchPoints: '5',
+      lang: 'en-US',
+      timezone: 'America/Los_Angeles',
+      hardwareConcurrency: '8',
+      webrtcPolicy: 'disable_non_proxied_udp',
+      ...EFFECTIVE_RUNTIME_NOISE_CONFIG,
+    },
+  },
+  {
+    id: 'android-galaxy-s23',
+    name: 'Android / Galaxy S23 / Chrome',
+    description: '实验性 Android 网页模拟；适合移动网页兼容性测试',
+    config: {
+      brand: 'Chrome',
+      brandVersion: '144.0.7559.132',
+      platform: 'android',
+      platformVersion: '14',
+      mobile: '1',
+      mobileModel: 'SM-S911B',
+      mobileViewport: '360,780',
+      mobileDpr: '3',
+      mobileTouchPoints: '5',
+      lang: 'en-US',
+      timezone: 'Europe/London',
+      hardwareConcurrency: '8',
+      webrtcPolicy: 'disable_non_proxied_udp',
+      ...EFFECTIVE_RUNTIME_NOISE_CONFIG,
+    },
+  },
   {
     id: 'win-chrome-office',
     name: 'Windows / Chrome / 办公',
